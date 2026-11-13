@@ -36,7 +36,17 @@ docker compose exec -T backend python -m scripts.seed_demo
 
 ## 六页与实体
 
-首页、端元与样本、解混配置、配比与残差、复配审阅、研究留痕。五个业务实体 `SpectralLibrary / Endmember / MixtureSample / UnmixRun / ReplicationNote` 均具备表、model、schema、service、route、前端API、store与页面/组件；另有User/Audit。输入库/端元/观测向量在运行创建时冻结，后续批注不改历史结果。
+首页、端元与样本、解混配置、配比与残差、复配审阅、研究留痕。五个业务实体 `SpectralLibrary / Endmember / MixtureSample / UnmixRun / ReplicationNote` 均具备表、model、schema、service、route、前端API、store与页面/组件；另有User/Audit。输入库/端元/观测向量在运行创建时冻结，后续批注、逐点谱重导或规则重算都不改历史结果。
+
+### 外协逐点测谱导入与按库波长对齐
+
+外协仪器的波长网格与所选库不一致，直接按列套端元会算错配比。在“端元与样本”页对样本逐点导入测谱（每行“波长,读数”，也可粘贴两等长数据块），系统按**所选库的波长网格**做分段线性插值，并同时保存：整理后的原始测点（乱序自动按波长升序）、逐目标点的插值依据（左右测点、读数、权重、跨度、是否精确命中）、规则版本与对齐时间。
+
+- 乱序可整理；同一波长出现互相冲突的重复读数时拒绝（一致读数按重复登记去重），不擅自取均值。
+- 任何库波长落在原始测程之外（覆盖不足）或两侧真实测点跨度超过可设上限时拒绝，并给出具体波段与跨度；**绝不外推补齐**。
+- 相邻测点最大插值跨度（nm，5–200）在库级可设，默认 60；导入时也可对单样本临时指定。
+- 规则更新后不静默改写历史：须在样本页“按当前规则重算”或库级“从原始谱批量重算”，从留存的原始谱重新生成 `observed`；没有原始谱的旧样本保持原网格读数，照常分析。
+- 重算只影响样本当前读数与之后新建的研究；既有 `UnmixRun.input_snapshot`、结果指纹与获批导出始终对应导入/冻结时的对齐结果。规则版本见 `constants/alignment.py` 的 `pointwise-linear-v1`。
 
 三个库各40混合样本、4端元×12波段，共120样本/12端元。LS-A可辨识，LS-B近共线拒绝，LS-C含10份偏离线性模型样本。所有演示数据均为固定种子的合成谱，不是材料实测。真配比未提供给算法。连续标量 `noise_sigma` 使用MySQL DOUBLE，光谱/比例数组使用JSON双精度浮点，避免单精度改变输入。
 
@@ -76,7 +86,7 @@ npm ci
 npm run dev
 ```
 
-`backend/src/{routes,controllers,services,models,schemas,middlewares,utils,constants,config}` 分离认证、来源、计算、建议与横切职责；`backend/scripts/seed_demo.py` 自然键seed；`backend/migrations/001_initial.sql` 是现有表的可选索引迁移，初次建表由SQLAlchemy metadata完成，不是独立全量DDL。`frontend/src/{api,stores,types,components,hooks,pages,router,utils,constants}` 是Vue应用，通用Notice/DataTable/StatusBadge与业务RunSummary/SpectralPlot跨页复用。
+`backend/src/{routes,controllers,services,models,schemas,middlewares,utils,constants,config}` 分离认证、来源、计算、建议与横切职责；`backend/scripts/seed_demo.py` 自然键seed；`backend/migrations/001_initial.sql` 是现有表的可选索引迁移，`002_pointwise_spectrum.sql` 给已存在的旧库补逐点谱列（全新库由SQLAlchemy metadata直接建表，无需执行），初次建表由SQLAlchemy metadata完成，不是独立全量DDL。`frontend/src/{api,stores,types,components,hooks,pages,router,utils,constants}` 是Vue应用，通用Notice/DataTable/StatusBadge与业务RunSummary/SpectralPlot/PointwiseImport/AlignmentDetail/LibraryGapPanel跨页复用。
 
 `.env` 参数有 COMPOSE_PROJECT_NAME、FRONTEND_PORT、BACKEND_PORT、DB_PORT、JWT_SECRET、SEED_DEMO；后端 DATABASE_URL、REDIS_URL 在Compose服务环境中定义。`.env`、构建目录、缓存与日志已忽略。角色枚举：`backend/src/constants/roles.py`、`frontend/src/constants/enums.ts`；运行状态：`backend/src/constants/status.py`、同一前端enums；审阅状态：`backend/src/schemas/note.py` Literal与前端ReviewStatus、model/default/service引用。共享枚举参与鉴权、worker状态与页面标签。
 

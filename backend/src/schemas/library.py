@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel,Field
 class LibraryOutput(BaseModel):
     id:int
     code:str
@@ -11,3 +11,6 @@ class LibraryOutput(BaseModel):
     supported:bool
     condition_number:float|None
     reason:str
+    max_interp_gap:float
+class LibraryGapUpdate(BaseModel):
+    max_interp_gap:float=Field(ge=5,le=200)
